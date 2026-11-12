@@ -362,10 +362,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "mod-ucs"
+version = "0.3.0"
+dependencies = [
+ "backend",
+ "engine",
+ "util",
+]
+
+[[package]]
 name = "modlist"
 version = "0.3.0"
 dependencies = [
  "backend",
+ "mod-ucs",
 ]
 
 [[package]]

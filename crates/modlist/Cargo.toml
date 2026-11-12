@@ -8,4 +8,5 @@ description = "Every Rust mod crate under mods/, registered for the server (buil
 [dependencies]
 backend = { path = "../backend" }
 # BEGIN MODS: written by build.rs from mods/*/Cargo.toml, do not edit
+mod-ucs = { path = "../../mods/ucs" }
 # END MODS

@@ -1,0 +1,11 @@
+[package]
+name = "mod-ucs"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+description = "UCS bot perf mod for Krebs: the screepsmod-admin-utils endpoints our lane tooling reads"
+
+[dependencies]
+backend = { path = "../../crates/backend" }
+engine = { path = "../../crates/engine" }
+util = { path = "../../crates/util" }
