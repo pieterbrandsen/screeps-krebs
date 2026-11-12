@@ -2,7 +2,9 @@
 //!
 //! Shapes follow the client and xxscreeps' password mod (spec 10 AUTHMOD-*): `email` may be a username or an
 //! e-mail; passwords are PBKDF2-HMAC-SHA1 (100 000 iterations, 16-byte salt) in `UserState.auth`
-//! `{password, salt}` (hex). Imported screepsmod-auth hashes are not verified (§8.5).
+//! `{password, salt}` (hex). screeps-krebs also verifies screepsmod-auth's own hashes, as an imported world or a
+//! perf tool writing `users.password/salt` holds them: PBKDF2-HMAC-SHA256 of the password over the salt text, 25 000
+//! iterations, 512 bytes, hex (told apart by the hash's length).
 
 use crate::api::auth::{default_code, new_user_doc};
 use crate::http::{obj, Request, Response};
@@ -39,9 +41,24 @@ fn auth_for(password: &str, keep: &Obj) -> Obj {
 }
 
 fn check_password(auth: &Obj, password: &str) -> bool {
-    let (Some(h), Some(salt)) = (str_field(auth, "password").and_then(unhex), str_field(auth, "salt").and_then(unhex)) else { return false };
+    let (Some(stored), Some(salt_text)) = (str_field(auth, "password"), str_field(auth, "salt")) else { return false };
+    if stored.len() == SCREEPSMOD_AUTH_KEYLEN * 2 {
+        return check_screepsmod_auth(stored, salt_text, password);
+    }
+    let (Some(h), Some(salt)) = (unhex(stored), unhex(salt_text)) else { return false };
     let got = hash(password, &salt);
     h.len() == 20 && h.iter().zip(got).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
+}
+
+/// screepsmod-auth's `crypto.pbkdf2(password, salt, 25000, 512, 'sha256')` in hex: the salt string's own bytes.
+const SCREEPSMOD_AUTH_ITERATIONS: u32 = 25_000;
+const SCREEPSMOD_AUTH_KEYLEN: usize = 512;
+
+fn check_screepsmod_auth(stored: &str, salt: &str, password: &str) -> bool {
+    let Some(h) = unhex(stored) else { return false };
+    let mut got = vec![0u8; SCREEPSMOD_AUTH_KEYLEN];
+    util::sha256::pbkdf2_sha256(password.as_bytes(), salt.as_bytes(), SCREEPSMOD_AUTH_ITERATIONS, &mut got);
+    h.len() == got.len() && h.iter().zip(&got).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
 }
 
 /// A username, or an e-mail when it contains `@` (xxscreeps findUserByUsernameOrEmail).
@@ -141,6 +158,19 @@ pub fn submit(req: &Request, ctx: &ApiCtx) -> Response {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// screepsmod-auth's own hash, made by node: crypto.pbkdf2Sync(Buffer.from('hunter22'), Buffer.from(salt), 25000, 512, 'sha256').
+    #[test]
+    fn verifies_screepsmod_auth_hashes() {
+        let mut auth = Obj::new();
+        obj_set(&mut auth, "salt", s("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"));
+        obj_set(&mut auth, "password", s("e191e780f6f1d2ae75f3cc49f63c191fde3938584a3aa469330e9c53cc3e29a1228106f1562e03195c18ec0f1b8a9b9ac804757956c9152f02f6d7dee9b6b0b91a148caaddc88c5aa63fd37ee56c5f244d48e3007d6eef4a2d85ab0ef38a898c7b7f4244bde04769aee69d463d694a50bf5808648fdab53ced6af495689bd057233801c4c9e3364a921a368eb11abc6c0a4218c8589888ee4da764ba1a2a7582ebaa1c25269cf571d31274dc9f23b2f7c6958c2019359956fed1ab89b7e5ac115712d18e8fd43d58dc8709a0296a9a7ee0545bfa055a88b872793eda7fa06496f86f1ad29c04a6db2e127a6f3ef4f95523ac9081734efe11bb77db9c46de072d2b0fed0479eafa78d9f45f8a1b5faef14cf49e1fbecfd74b64e69aac3c8eaa3b7849c10cec2274cff23074c7139e5fbde5cb8701e2dd28a8a36d0235f2106e82ed79e832149a07ed81f0710a264518d09013acaeb18e2501aa03b1e0efbc67cf5f63991b90613433af60ecdc0efb514d69397b035ca48e3d3df1e0d874fc2ff1b9e653475e1f0bb229ae395acb3e470a5b67398ac18349ca3879ffaa15c84021053dce0f5caeafe9a1404113e9eebb289499af2080f7bf27c7bf49534b3a78769b8296a83fbfa9ae1781cdfdb9c668f715b46683f59c6de94d50eb3a5cf4574d8530c5590e9775c03cb62fd2a9637ea2070e5373572bfeaedce2bed483602475"));
+        assert!(check_password(&auth, "hunter22"));
+        assert!(!check_password(&auth, "hunter23"));
+        let own = auth_for("hunter22", &Obj::new());
+        assert!(check_password(&own, "hunter22"), "Krebs's own hashes still verify");
+        assert!(!check_password(&own, "hunter23"));
+    }
     use crate::fake;
 
     #[test]

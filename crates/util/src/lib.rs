@@ -10,4 +10,5 @@ pub mod num;
 pub mod pool;
 pub mod rng;
 pub mod sha1;
+pub mod sha256;
 pub mod sys;
