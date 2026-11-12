@@ -34,6 +34,8 @@ struct State {
 pub struct ServerIsolate {
     host: OnceLock<Arc<dyn CliHost>>,
     state: Mutex<Option<State>>,
+    /// Mods' console JS (`Registry::cli_js`, screeps-krebs), run in every session once its sandbox is set up.
+    mod_cli: OnceLock<Vec<String>>,
 }
 
 thread_local! {
@@ -65,7 +67,7 @@ fn bundle() -> &'static str {
 
 impl Default for ServerIsolate {
     fn default() -> Self {
-        ServerIsolate { host: OnceLock::new(), state: Mutex::new(None) }
+        ServerIsolate { host: OnceLock::new(), state: Mutex::new(None), mod_cli: OnceLock::new() }
     }
 }
 
@@ -73,6 +75,12 @@ impl ServerIsolate {
     /// The host the CLI natives talk to; set once, before the first session.
     pub fn set_host(&self, host: Arc<dyn CliHost>) {
         let _ = self.host.set(host);
+    }
+
+    /// Mods' console JS (`Registry::cli_js`): each a JS function `(sandbox, call) => { … }`; set once, before the first
+    /// session.
+    pub fn set_mod_cli(&self, sources: Vec<String>) {
+        let _ = self.mod_cli.set(sources);
     }
 
     /// The connection greeting (js/cli/server.js) with `{build} ` filled in.
@@ -137,6 +145,14 @@ impl ServerIsolate {
                 let yes = v8::Boolean::new(tc, true);
                 natives.set(tc, key.into(), yes.into());
             }
+            let sources = self.mod_cli.get().map(Vec::as_slice).unwrap_or(&[]);
+            let mods = v8::Array::new(tc, sources.len() as i32);
+            for (i, src) in sources.iter().enumerate() {
+                let s = v8::String::new(tc, src).ok_or("mod console JS too large")?;
+                mods.set_index(tc, i as u32, s.into());
+            }
+            let key = v8::String::new(tc, "mods").unwrap();
+            natives.set(tc, key.into(), mods.into());
             let Some(run) = start.call(tc, global.into(), &[natives.into()]) else { fail!() };
             let run = v8::Local::<v8::Function>::try_from(run).map_err(|_| "__cliStart returned no function")?;
             tc.perform_microtask_checkpoint();

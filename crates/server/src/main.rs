@@ -264,7 +264,10 @@ fn serve(mut cfg: Config, args: &Args) {
             Ok(fresh)
         })
     };
-    let host = cli::Host::new(published.clone(), tx.clone(), Some(rt.clone()), cfg.data.clone(), w.compat.profile, run_ticks.clone(), hooks, reset);
+    let mut host = cli::Host::new(published.clone(), tx.clone(), Some(rt.clone()), cfg.data.clone(), w.compat.profile, run_ticks.clone(), hooks, reset);
+    // mods' console helpers (screeps-krebs): their JS in every session, their natives behind `call`
+    host.mod_calls = registry.cli_calls;
+    rt.server().set_mod_cli(registry.cli_js.iter().map(|s| s.to_string()).collect());
     rt.server().set_host(Arc::new(host));
     let backend = backend::start(BackendDeps {
         published: published.clone(),

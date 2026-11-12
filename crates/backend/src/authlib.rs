@@ -43,10 +43,28 @@ fn gen_token_at(uid: &str, now_ms: i64) -> String {
     format!("{payload}.{m}")
 }
 
-/// `checkToken(token)`: the user the token names, if the MAC matches, it has not expired and the user exists.
+/// `checkToken(token)`: the user the token names, if the MAC matches, it has not expired and the user exists; else
+/// (screeps-krebs) the user holding it as a long-lived API token (`authTokens`, screepsmod-auth's createAuthToken).
 pub fn check_token(token: &str, view: &WorldView) -> Option<UserIdx> {
-    let uid = verify(token, real_now_ms("CLK-API"))?;
-    view.user_ids.get(&Id::new(uid)?).copied()
+    if let Some(uid) = verify(token, real_now_ms("CLK-API")) {
+        return view.user_ids.get(&Id::new(uid)?).copied();
+    }
+    api_token_user(token, view)
+}
+
+/// The user whose private `authTokens` holds `token`. Tokens are random UUIDs; a short or empty one never matches.
+pub fn api_token_user(token: &str, view: &WorldView) -> Option<UserIdx> {
+    if token.len() < 16 {
+        return None;
+    }
+    view.users.iter().position(|u| match u.auth.get(engine::doc::Atom::intern("authTokens")) {
+        Some(engine::doc::Val::Arr(list)) => list.iter().any(|e| match e {
+            engine::doc::Val::Obj(o) => o.get(engine::doc::Atom::intern("token")).and_then(engine::doc::Val::as_str) == Some(token),
+            engine::doc::Val::Str(s) => &**s == token,
+            _ => false,
+        }),
+        _ => false,
+    }).map(|i| i as UserIdx)
 }
 
 fn verify(token: &str, now_ms: i64) -> Option<&str> {

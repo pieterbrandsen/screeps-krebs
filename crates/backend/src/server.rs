@@ -214,7 +214,8 @@ fn server_data(backend: &Json) -> Json {
         ("socketUpdateThrottle", get("socketUpdateThrottle")),
         ("renderer", get("renderer")),
         ("features", Json::Arr(vec![market, auth])),
-        ("shards", Json::Arr(vec![])),
+        // `[]` as vanilla, unless a mod names the shard (`config.backend.shards`, as screepsmod-admin-utils does)
+        ("shards", backend.get("shards").cloned().unwrap_or(Json::Arr(vec![]))),
     ])
 }
 

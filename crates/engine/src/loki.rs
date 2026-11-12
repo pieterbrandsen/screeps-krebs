@@ -428,7 +428,7 @@ pub(crate) fn build(db: Db, terrain: Option<Vec<RoomTerrain>>, opts: &ImportOpts
         let u = u as UserIdx;
         let id = str_of(&doc, "_id").and_then(Id::new).unwrap();
         let mut auth = Obj::new();
-        for k in ["password", "salt"] {
+        for k in crate::world::AUTH_FIELDS {
             if let Some(v) = doc.remove(key(k)) {
                 auth.set(key(k), v);
             }

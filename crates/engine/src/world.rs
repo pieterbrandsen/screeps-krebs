@@ -611,6 +611,10 @@ impl Default for EngineConfig {
 
 // ---- §3.5 Users and per-user state ----
 
+/// The user fields kept in `UserState::auth`, never sent to clients: the password hash and salt, and screeps-krebs's
+/// long-lived API tokens (`authTokens`, `[{token, full, created, description?}]`, screepsmod-auth's createAuthToken).
+pub const AUTH_FIELDS: [&str; 3] = ["password", "salt", "authTokens"];
+
 pub struct UserState {
     pub id: Id,
     pub seq: u64,

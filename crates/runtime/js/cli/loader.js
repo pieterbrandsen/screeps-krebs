@@ -108,6 +108,14 @@
             var writer = load('cli/server.js').writer(natives.out);
             run = sandbox.create(writer);
         }
+        // Mods' console JS (screeps-krebs `Registry::cli_js`): `(sandbox, call) => { … }` over the sandbox's globals;
+        // `call(name, args)` runs a mod's console native and returns its JSON result.
+        var call = function (name, args) {
+            return JSON.parse(natives.call(name, JSON.stringify(args === undefined ? [] : args)));
+        };
+        (natives.mods || []).forEach(function (src) {
+            (0, eval)('(' + src + ')')(G, call);
+        });
         delete G.__cli;
         delete G.__chitinDefine;
         delete G.__cliStart;

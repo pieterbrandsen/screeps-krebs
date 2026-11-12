@@ -111,10 +111,11 @@ pub fn write(w: &mut World, coll: &str, writes: Vec<Write>) -> Result<Vec<Obj>, 
     Ok(inserted)
 }
 
-/// `password`/`salt` live in `UserState::auth` (never sent to clients); the rest is the doc.
+/// `password`/`salt` (and screeps-krebs's API tokens, `authTokens`) live in `UserState::auth` (never sent to clients);
+/// the rest is the doc.
 fn split_auth(mut doc: Obj) -> (Obj, Obj) {
     let mut auth = Obj::new();
-    for k in ["password", "salt"] {
+    for k in crate::world::AUTH_FIELDS {
         if let Some(v) = doc.remove(key(k)) {
             auth.set(key(k), v);
         }

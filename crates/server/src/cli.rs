@@ -30,6 +30,8 @@ pub struct Host {
     pub reset: Box<dyn Fn() -> Result<World, String> + Send + Sync>,
     /// Env keys outside the world: value and expiry (ms).
     env: Mutex<HashMap<String, (Json, Option<i64>)>>,
+    /// Mods' console natives (`Registry::cli_calls`), reached when `call` names none of the host's own commands.
+    pub mod_calls: Vec<(&'static str, backend::mods::CliCallFn)>,
 }
 
 impl Host {
@@ -45,7 +47,7 @@ impl Host {
         reset: Box<dyn Fn() -> Result<World, String> + Send + Sync>,
     ) -> Host {
         let mod_crons = hooks.crons.iter().map(|c| c.0).collect();
-        Host { published, commands: Mutex::new(commands), runtime, data, profile, run_ticks, mod_crons, hooks, reset, env: Mutex::default() }
+        Host { published, commands: Mutex::new(commands), runtime, data, profile, run_ticks, mod_crons, hooks, reset, env: Mutex::default(), mod_calls: Vec::new() }
     }
 
     /// Runs `f` on the tick thread. Reads come from the published view, and the tick's own publish is up to a tick away,
@@ -409,7 +411,14 @@ impl CliHost for Host {
                 }
                 ok(Json::Null)
             }
-            _ => Err(format!("unknown CLI command {name}")),
+            _ => match self.mod_calls.iter().find(|(n, _)| *n == name) {
+                Some((_, f)) => {
+                    let commands = self.commands.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                    let ctx = backend::mods::CliCallCtx { published: &self.published, commands: &commands, data_dir: &self.data };
+                    f(&args, &ctx).map(|j| j.stringify())
+                }
+                None => Err(format!("unknown CLI command {name}")),
+            },
         }
     }
 }
