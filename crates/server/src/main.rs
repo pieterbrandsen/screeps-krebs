@@ -218,7 +218,7 @@ fn serve(mut cfg: Config, args: &Args) {
     let has_checkpoint = engine::persist::exists(&cfg.data);
     let spec = match std::fs::read_to_string(spec_path(&cfg)) {
         Ok(t) => Json::parse(&t).unwrap_or_else(|e| fail(&start::world_problem(&cfg.data, &format!("{}: {e}", spec_path(&cfg).display())))),
-        Err(_) if has_checkpoint => Json::Obj(Vec::new()),
+        Err(_) if has_checkpoint || cfg.world.original.is_some() => Json::Obj(Vec::new()),
         Err(e) => fail(&format!("{}: {e} (run `krebs new` or `krebs import` first)", spec_path(&cfg).display())),
     };
     let pool = util::pool::Pool::new(logical_cores());
@@ -235,7 +235,14 @@ fn serve(mut cfg: Config, args: &Args) {
             w
         }
         Some(Err(e)) => fail(&start::world_problem(&cfg.data, &e)),
-        None => generate(&cfg, &spec, &pool),
+        None => match &cfg.world.original {
+            Some(file) => {
+                let w = import_original(&cfg, &spec, file).unwrap_or_else(|e| fail(&e));
+                say(&format!("imported {} (world.original): tick {}, {} rooms, {} users", file.display(), w.time, w.rooms.len(), w.users.len()));
+                w
+            }
+            None => generate(&cfg, &spec, &pool),
+        },
     };
     let (mod_names, registry, game_js) = mods::load(&cfg.mods, &cfg.data, steam_key).unwrap_or_else(|e| fail(&start::mods_problem(&e)));
     w.mods = mod_names.iter().map(|&n| n.into()).collect();
@@ -256,7 +263,10 @@ fn serve(mut cfg: Config, args: &Args) {
     let reset = {
         let (cfg, spec, mods) = (cfg.clone(), spec.clone(), w.mods.clone());
         Box::new(move || {
-            let mut fresh = generate(&cfg, &spec, &util::pool::Pool::new(logical_cores()));
+            let mut fresh = match &cfg.world.original {
+                Some(file) => import_original(&cfg, &spec, file)?,
+                None => generate(&cfg, &spec, &util::pool::Pool::new(logical_cores())),
+            };
             fresh.mods = mods.clone();
             let mut config = copy_engine(&fresh.config);
             config.history = history;
@@ -338,6 +348,16 @@ fn apply_config(w: &mut World, cfg: &Config) {
     compat.profile = w.compat.profile;
     w.compat = Arc::new(compat);
     w.config = Arc::new(copy_engine(&cfg.engine));
+}
+
+/// `world.original` as a fresh world (screeps-krebs): what vanilla's resetAllData loads from db.original.json, with this
+/// server's config over it.
+fn import_original(cfg: &Config, spec: &Json, file: &std::path::Path) -> Result<World, String> {
+    let text = std::fs::read_to_string(file).map_err(|e| format!("world.original {}: {e}", file.display()))?;
+    let (mut w, report) = engine::loki::import(&text, &import_opts(cfg, spec)).map_err(|e| format!("world.original {}: {e}", file.display()))?;
+    report_import(&report);
+    apply_config(&mut w, cfg);
+    Ok(w)
 }
 
 /// Import options for this server: the world seed and profile `new` recorded (an official DB has neither).

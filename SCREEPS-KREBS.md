@@ -16,6 +16,7 @@ server got from its mods: a few hooks in the core, and one mod, `ucs`, that uses
 | `EngineHooks::history_fill_gaps`, `history_buffered` | History chunks built the way the lanes' screepsmod-history fork builds them, and which windows the writer still holds. |
 | `ProcessorHooks::actionlog_amounts` | `pickup`, `withdraw`, `drop` and `transferEnergy` record `{x, y, amount, resourceType, targetId}` in actionLog, as the lanes' engine fork does. |
 | Auth | Verifies screepsmod-auth password hashes (PBKDF2-HMAC-SHA256), and accepts long-lived API tokens from `users[].authTokens`. These stay private, as `password` does. `util::sha256` has the hashes. |
+| `world.original` (krebs.json) | An official Loki db.json that `system.resetAllData()` reloads, as vanilla reloads `db.original.json`. `serve` also imports it into a data directory that has no world yet. The lanes use the launcher's seed world (`@screeps/launcher/init_dist/db.json`). |
 | `/api/version` | `serverData.shards` comes from the backend config, so a mod can name the shard. |
 
 ## The `ucs` mod
@@ -50,6 +51,7 @@ covered by `engine.disabledCronjobs` and the lane runner.
   "cli": {"host": "127.0.0.1", "port": 21026, "http": true},
   "data": "data",
   "mods": ["ucs"],
+  "world": {"original": "/krebs/seed-db.json"},
   "engine": {"historyChunkSize": 100}
 }
 ```

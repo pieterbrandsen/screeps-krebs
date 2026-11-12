@@ -64,6 +64,9 @@ pub struct WorldCfg {
     pub seed: u64,
     pub wide_coords: bool,
     pub open: bool,
+    /// `world.original` (screeps-krebs): an official Loki db.json that `system.resetAllData()` reloads, as vanilla
+    /// reloads storage's db.original.json, and that `serve` imports into a data directory with no world yet.
+    pub original: Option<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -169,6 +172,7 @@ impl Config {
                 seed: num("world.seed", 1.0) as u64,
                 wide_coords: bool_("world.wideCoords", false),
                 open: bool_("world.open", true),
+                original: at("world.original").and_then(Json::as_str).map(PathBuf::from),
             },
             compat,
             shard_name: str_("shardName", "shard0"),
