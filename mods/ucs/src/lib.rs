@@ -4,13 +4,15 @@
 //!   and `users` keyed by id with `{_id, username, badge}` for every user a doc names, plus "2" (Invader) and "3"
 //!   (Source Keeper). No `ok` field and no auth, as admin-utils answers it.
 //! * `GET /api/game/shards/info`: `{ok, shards: [{cpuLimit, lastTicks, name, rooms, tick}]}`.
-//! * the console helpers, crons and shard name in `admin` (admin-utils' and screepsmod-auth's).
+//! * the console helpers, crons and shard name in `admin` (admin-utils' and screepsmod-auth's);
+//! * room history as our screepsmod-history fork keeps and serves it, in `history`.
 //!
 //! The speedrun rules (screepsmod-speedrun 1.0.3 and run.sh's stronghold patch) are world setup, not server code:
 //! `engine.disabledCronjobs` turns off genInvaders, genStrongholds and expandStrongholds, and the lane runner removes
 //! the NPC bots and lays the invaderCore ruins through the console.
 
 pub mod admin;
+pub mod history;
 
 use backend::http::{Request, Response};
 use backend::mods::{Manifest, Mod, Registry};
@@ -33,6 +35,8 @@ impl Mod for Ucs {
         r.routes.push(Route { method: "GET", path: "/api/game/room-objects", handler: room_objects });
         r.routes.push(Route { method: "GET", path: "/api/game/shards/info", handler: shards_info });
         admin::register(r);
+        let ucs_json = Json::parse(&std::fs::read_to_string(r.data_dir.join("ucs.json")).unwrap_or_default()).unwrap_or(Json::Null);
+        history::register(r, &ucs_json);
     }
 }
 

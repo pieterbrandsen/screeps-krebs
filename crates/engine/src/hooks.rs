@@ -39,6 +39,16 @@ pub struct EngineHooks {
     pub next_tick_delay: Option<fn(used_ms: u64) -> u64>,
     /// `config.engine.on('saveRoomHistory', (roomName, baseTime, data) => …)` (FMT-HISTORY-CHUNK).
     pub save_room_history: Vec<fn(&str, u64, &util::json::Json)>,
+    /// screeps-krebs: build chunks as screepsmod-history's worker does (`{}` for a tick the room did not save, as many
+    /// ticks as it saved, `"undefined"` keys dropped) instead of vanilla's stop at the first missing tick.
+    pub history_fill_gaps: bool,
+}
+
+/// screeps-krebs: the rooms whose history the writer holds and has not uploaded yet, each with the lowest tick it
+/// holds; what tells "this chunk is not written yet" (screepsmod-history's `upload_pending`) from "nothing happened".
+pub fn history_buffered() -> &'static std::sync::Mutex<std::collections::HashMap<Box<str>, u64>> {
+    static BUFFERED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashMap<Box<str>, u64>>> = std::sync::OnceLock::new();
+    BUFFERED.get_or_init(Default::default)
 }
 
 /// `mainLoopStage` event names (reference/engine/src/main.js:16-115, TICK-STAGE-EVENTS).

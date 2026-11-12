@@ -242,7 +242,7 @@ impl<S: Stages> TickLoop<S> {
         for (r, data) in history {
             // processor.js:504-507 saveRoomHistory, after the room's writes
             let sinks = &self.hooks.save_room_history;
-            let tx = self.history.get_or_insert_with(|| crate::history::spawn(sinks.clone()));
+            let tx = self.history.get_or_insert_with(|| crate::history::spawn(sinks.clone(), self.hooks.history_fill_gaps));
             let tick = crate::history::Tick { room: w.meta.rooms[r as usize].name.clone(), game_time: t, data, chunk: w.config.history_chunk_size as u64, now_ms: w.clock.at(t) };
             let _ = tx.send(tick);
         }

@@ -23,12 +23,12 @@ pub struct Tick {
 }
 
 /// The writer thread: calls run in send order, one at a time (vanilla's process-global promise chain).
-pub fn spawn(sinks: Vec<Sink>) -> std::sync::mpsc::Sender<Tick> {
+pub fn spawn(sinks: Vec<Sink>, fill_gaps: bool) -> std::sync::mpsc::Sender<Tick> {
     let (tx, rx) = std::sync::mpsc::channel::<Tick>();
     std::thread::Builder::new()
         .name("history".into())
         .spawn(move || {
-            let mut h = History::default();
+            let mut h = History { fill_gaps, ..History::default() };
             for t in rx {
                 h.save(&t.room, t.game_time, t.data, t.chunk, t.now_ms, &sinks);
             }
@@ -41,6 +41,8 @@ pub fn spawn(sinks: Vec<Sink>) -> std::sync::mpsc::Sender<Tick> {
 pub struct History {
     /// `env.keys.ROOM_HISTORY + roomId` → hash `{"<gameTime>": JSON}`.
     hashes: HashMap<Box<str>, HashMap<String, Box<str>>>,
+    /// screeps-krebs `EngineHooks::history_fill_gaps`.
+    fill_gaps: bool,
 }
 
 impl History {
@@ -52,6 +54,21 @@ impl History {
             self.upload(room, base, now_ms, sinks);
         }
         self.save_tick(room, game_time, data);
+        self.publish_buffered(room);
+    }
+
+    /// screeps-krebs `engine::hooks::history_buffered`: the lowest tick held for the room, or none.
+    fn publish_buffered(&self, room: &str) {
+        let lowest = self.hashes.get(room).and_then(|h| h.keys().filter_map(|k| k.parse::<u64>().ok()).min());
+        let mut buffered = engine::hooks::history_buffered().lock().unwrap_or_else(|e| e.into_inner());
+        match lowest {
+            Some(t) => {
+                buffered.insert(room.into(), t);
+            }
+            None => {
+                buffered.remove(room);
+            }
+        }
     }
 
     /// history.js:7 saveTick: `env.hmset(ROOM_HISTORY + roomId, {[gameTime]: data})`.
@@ -67,15 +84,35 @@ impl History {
 
         let mut cur_tick = base_time;
         let mut cur_objects = parse(first);
+        if self.fill_gaps {
+            drop_undefined(&mut cur_objects);
+        }
         let mut ticks: Vec<(String, Json)> = vec![(key(cur_tick), cur_objects.clone())];
 
-        cur_tick += 1.0;
-        while let Some(text) = data.get(&key(cur_tick)) {
-            let objects = parse(text);
-            let diff = engine::common::get_diff(&values(&cur_objects), &values(&objects));
-            ticks.push((key(cur_tick), diff));
-            cur_objects = objects;
+        if self.fill_gaps {
+            // screepsmod-history's chunkBuilder.js: `historyChunkSize = Object.keys(data).length`, each later tick a
+            // diff, or `{}` when the room did not save it
+            for i in 1..data.len() {
+                let t = base_time + i as f64;
+                match data.get(&key(t)) {
+                    Some(text) => {
+                        let mut objects = parse(text);
+                        drop_undefined(&mut objects);
+                        ticks.push((key(t), engine::common::get_diff(&values(&cur_objects), &values(&objects))));
+                        cur_objects = objects;
+                    }
+                    None => ticks.push((key(t), Json::Obj(Vec::new()))),
+                }
+            }
+        } else {
             cur_tick += 1.0;
+            while let Some(text) = data.get(&key(cur_tick)) {
+                let objects = parse(text);
+                let diff = engine::common::get_diff(&values(&cur_objects), &values(&objects));
+                ticks.push((key(cur_tick), diff));
+                cur_objects = objects;
+                cur_tick += 1.0;
+            }
         }
 
         let result = Json::Obj(vec![
@@ -88,6 +125,13 @@ impl History {
             f(room, base_time as u64, &result);
         }
         self.hashes.remove(room);
+    }
+}
+
+/// chunkBuilder.js `delete objects["undefined"]`: a document without an `_id` is keyed "undefined" by the engine.
+fn drop_undefined(objects: &mut Json) {
+    if let Json::Obj(m) = objects {
+        m.retain(|(k, _)| k != "undefined");
     }
 }
 
@@ -138,6 +182,30 @@ mod tests {
         assert!(json.contains(r#""39":{"a":{"x":0}}}"#), "{json}");
         assert_eq!(h.hashes["W1N1"].len(), 1, "only tick 40 remains");
         assert_eq!(h.hashes["W2N1"].len(), 2, "no base 20: nothing uploaded or deleted");
+    }
+
+    static FILLED: Mutex<Vec<(String, u64, String)>> = Mutex::new(Vec::new());
+    fn filled_sink(room: &str, base: u64, result: &Json) {
+        FILLED.lock().unwrap().push((room.into(), base, result.stringify()));
+    }
+
+    /// screeps-krebs `history_fill_gaps` (screepsmod-history's chunkBuilder.js): a tick the room did not save is `{}`,
+    /// and the chunk has as many ticks as were saved; vanilla stops at the first gap. The lowest held tick is published.
+    #[test]
+    fn chunk_upload_with_gaps_filled() {
+        let mut h = History { fill_gaps: true, ..History::default() };
+        let tick = |x: u32| format!(r#"{{"a":{{"_id":"a","type":"creep","x":{x},"y":1}},"undefined":{{"type":"x"}}}}"#).into_boxed_str();
+        for t in [20, 21, 23, 24] {
+            h.save("W5N5", t, tick(t as u32), 20, 7, &[filled_sink]);
+        }
+        assert_eq!(engine::hooks::history_buffered().lock().unwrap().get("W5N5"), Some(&20));
+        h.save("W5N5", 40, tick(1), 20, 7, &[filled_sink]);
+        let got = FILLED.lock().unwrap().clone();
+        let (_, base, json) = &got[0];
+        assert_eq!(*base, 20);
+        assert!(json.contains(r#""ticks":{"20":{"a":{"_id":"a","type":"creep","x":20,"y":1}},"21":{"a":{"x":21}},"22":{},"23":{"a":{"x":23}}}"#), "{json}");
+        assert!(!json.contains("undefined"), "{json}");
+        assert_eq!(engine::hooks::history_buffered().lock().unwrap().get("W5N5"), Some(&40), "only tick 40 is held now");
     }
 }
 
