@@ -35,6 +35,8 @@ impl Mod for Ucs {
         r.routes.push(Route { method: "GET", path: "/api/game/room-objects", handler: room_objects });
         r.routes.push(Route { method: "GET", path: "/api/game/shards/info", handler: shards_info });
         admin::register(r);
+        // the lanes' engine fork: real amounts for pickup, withdraw, drop and transferEnergy in actionLog
+        r.engine.processor.actionlog_amounts = true;
         let ucs_json = Json::parse(&std::fs::read_to_string(r.data_dir.join("ucs.json")).unwrap_or_default()).unwrap_or(Json::Null);
         history::register(r, &ucs_json);
     }

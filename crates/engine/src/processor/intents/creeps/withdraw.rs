@@ -84,6 +84,10 @@ pub fn run(object: &O, intent: &V, scope: &mut RoomScope) -> Result<(), Crash> {
         )?;
     }
 
-    push_event(scope, EVENT_TRANSFER, target.get(atom!("_id")), obj! { "targetId" => object.get(atom!("_id")), "resourceType" => rt_v, "amount" => amount });
+    push_event(scope, EVENT_TRANSFER, target.get(atom!("_id")), obj! { "targetId" => object.get(atom!("_id")), "resourceType" => rt_v.clone(), "amount" => amount.clone() });
+    if scope.ctx.hooks.actionlog_amounts {
+        let log = obj! { "x" => target.get(atom!("x")), "y" => target.get(atom!("y")), "amount" => amount, "resourceType" => rt_v, "targetId" => target.get(atom!("_id")) };
+        crate::processor::put(&object.get(atom!("actionLog")), atom!("withdraw"), log)?;
+    }
     Ok(())
 }

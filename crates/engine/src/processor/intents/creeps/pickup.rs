@@ -42,5 +42,10 @@ pub fn run(object: &O, intent: &V, scope: &mut RoomScope) -> Result<(), Crash> {
     } else {
         update(scope, &target, &obj1(rt, target.get(rt)))?;
     }
-    update(scope, object, &obj1(atom!("store"), obj1(rt, get_or_undef(&object.get(atom!("store")), rt))))
+    update(scope, object, &obj1(atom!("store"), obj1(rt, get_or_undef(&object.get(atom!("store")), rt))))?;
+    if scope.ctx.hooks.actionlog_amounts {
+        let log = crate::processor::obj! { "x" => target.get(atom!("x")), "y" => target.get(atom!("y")), "amount" => V::Num(amount), "resourceType" => resource_type, "targetId" => target.get(atom!("_id")) };
+        crate::processor::put(&object.get(atom!("actionLog")), atom!("pickup"), log)?;
+    }
+    Ok(())
 }

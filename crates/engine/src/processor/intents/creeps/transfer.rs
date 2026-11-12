@@ -61,6 +61,10 @@ pub fn run(object: &O, intent: &V, scope: &mut RoomScope) -> Result<(), Crash> {
         update(scope, &target, &obj! { "storeCapacityResource" => obj1(rt, V::Num(LAB_MINERAL_CAPACITY as f64)), "storeCapacity" => V::Null })?;
     }
 
-    push_event(scope, EVENT_TRANSFER, object.get(atom!("_id")), obj! { "targetId" => target.get(atom!("_id")), "resourceType" => rt_v, "amount" => amount });
+    push_event(scope, EVENT_TRANSFER, object.get(atom!("_id")), obj! { "targetId" => target.get(atom!("_id")), "resourceType" => rt_v.clone(), "amount" => amount.clone() });
+    if scope.ctx.hooks.actionlog_amounts {
+        let log = obj! { "x" => target.get(atom!("x")), "y" => target.get(atom!("y")), "amount" => amount, "resourceType" => rt_v, "targetId" => target.get(atom!("_id")) };
+        crate::processor::put(&object.get(atom!("actionLog")), atom!("transferEnergy"), log)?;
+    }
     Ok(())
 }

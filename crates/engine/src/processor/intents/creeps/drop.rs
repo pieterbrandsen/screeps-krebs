@@ -22,6 +22,10 @@ pub fn run(object: &O, intent: &V, scope: &mut RoomScope) -> Result<(), Crash> {
         put(&store, rt, V::Num(to_number(&get_or_undef(&store, rt)) - to_number(&amount)))?;
         let (x, y, room) = (to_number(&object.get(atom!("x"))), to_number(&object.get(atom!("y"))), to_js_string(&object.get(atom!("room"))));
         create_energy(x, y, &room, to_number(&amount), rt.as_str(), scope)?;
+        if scope.ctx.hooks.actionlog_amounts {
+            let log = crate::processor::obj! { "x" => object.get(atom!("x")), "y" => object.get(atom!("y")), "amount" => amount.clone(), "resourceType" => V::str(rt.as_str()) };
+            crate::processor::put(&object.get(atom!("actionLog")), atom!("drop"), log)?;
+        }
     }
     let value = get_or_undef(&object.get(atom!("store")), rt);
     update(scope, object, &obj1(atom!("store"), obj1(rt, value)))

@@ -11,6 +11,10 @@ use crate::world::{UserIdx, World, WorldView};
 
 #[derive(Default)]
 pub struct ProcessorHooks {
+    /// screeps-krebs: a creep's actionLog also records pickup, withdraw, drop and transferEnergy with the amount that
+    /// moved (`{x, y, amount, resourceType, targetId}`, drop without a target), as the UCS perf lanes' engine fork
+    /// pieterbrandsen/engine v4.3.0-actionlog-real-amounts.1 does; vanilla records none of the four.
+    pub actionlog_amounts: bool,
     /// customIntentTypes
     pub intent_types: Vec<(&'static str, &'static [(&'static str, system::FieldType)])>,
     pub object_intents: Vec<(&'static str /*object type*/, &'static str /*intent*/, fn(&O, &V, &mut RoomScope) -> Result<(), Crash>)>,
