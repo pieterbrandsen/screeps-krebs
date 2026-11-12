@@ -200,6 +200,7 @@ impl Runtime {
             file(bundle.files).is_some() && file(bundle.files) == file(bundle::FILES)
         };
         let native_store = shipped("host/system.js") && shipped("common/system.js");
+        let server = ServerIsolate::with_snapshot(snapshots.blob);
         Runtime {
             cfg,
             snapshots,
@@ -208,7 +209,7 @@ impl Runtime {
             native_store,
             resets: AtomicU64::new(0),
             migrations: AtomicU64::new(0),
-            server: ServerIsolate::default(),
+            server,
         }
     }
 

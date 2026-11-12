@@ -36,6 +36,11 @@ pub struct ServerIsolate {
     state: Mutex<Option<State>>,
     /// Mods' console JS (`Registry::cli_js`, screeps-krebs), run in every session once its sandbox is set up.
     mod_cli: OnceLock<Vec<String>>,
+    /// screeps-krebs: the players' startup snapshot, which the console's isolate is made from too. On a V8 whose
+    /// isolates share one read-only heap (the stock prebuilt library), an isolate from V8's own snapshot made before a
+    /// player's left that heap mismatched for the player's, and V8 aborted (`vector[] index out of bounds` in
+    /// SharedHeapDeserializer::DeserializeStringTable). None in tests that run the console alone.
+    snapshot: Option<&'static [u8]>,
 }
 
 thread_local! {
@@ -67,11 +72,16 @@ fn bundle() -> &'static str {
 
 impl Default for ServerIsolate {
     fn default() -> Self {
-        ServerIsolate { host: OnceLock::new(), state: Mutex::new(None), mod_cli: OnceLock::new() }
+        ServerIsolate { host: OnceLock::new(), state: Mutex::new(None), mod_cli: OnceLock::new(), snapshot: None }
     }
 }
 
 impl ServerIsolate {
+    /// The console of a runtime whose players start from `blob`.
+    pub fn with_snapshot(blob: &'static [u8]) -> ServerIsolate {
+        ServerIsolate { snapshot: Some(blob), ..ServerIsolate::default() }
+    }
+
     /// The host the CLI natives talk to; set once, before the first session.
     pub fn set_host(&self, host: Arc<dyn CliHost>) {
         let _ = self.host.set(host);
@@ -108,7 +118,11 @@ impl ServerIsolate {
         let host = self.host.get().cloned().ok_or("the CLI has no host")?;
         let mut state = self.lock();
         if state.is_none() {
-            let mut iso = v8::Isolate::new(v8::CreateParams::default());
+            let params = match self.snapshot {
+                Some(blob) => v8::CreateParams::default().snapshot_blob(v8::StartupData::from(blob)),
+                None => v8::CreateParams::default(),
+            };
+            let mut iso = v8::Isolate::new(params);
             iso.set_microtasks_policy(v8::MicrotasksPolicy::Explicit);
             // SAFETY: nothing but plain-fn natives is attached to this isolate.
             let iso = unsafe { iso.try_into_shared() }.map_err(|e| e.to_string())?;
