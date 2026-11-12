@@ -9,10 +9,12 @@
 //!   with `active: 10000`, when `gclToCPU` is configured), `fixAllowed` (`blocked = banned || (whitelist non-empty and
 //!   not a bot and not listed)`), every tick but writing only what changed, and `inactiveUserCleanup` every 60 s
 //!   (`active: 0` for a user with no rooms and no creep or controller);
-//! * `serverConfig.shardName`: `/api/version` names that one shard.
+//! * `serverConfig.shardName`: `/api/version` names that one shard;
+//! * `serverConfig.whitelist`: names listed from the start, as config.yml lists them (their case kept).
 //!
 //! Settings come from `<data>/ucs.json` (`{"shardName": "shard", "gclToCPU": {"maxCPU": 100, "baseCPU": 20,
-//! "stepCPU": 10}}`, both optional); the whitelist lives in `<data>/ucs-whitelist.json`, admin-utils' env key here.
+//! "stepCPU": 10}, "whitelist": ["Observer", "Invader"]}`, all optional); the whitelist lives in
+//! `<data>/ucs-whitelist.json`, admin-utils' env key here, with the configured names added at start.
 
 use backend::mods::{CliCallCtx, Registry};
 use backend::{edit_user, field, obj_set, str_field};
@@ -32,6 +34,7 @@ pub struct Settings {
     pub shard_name: Option<String>,
     /// (maxCPU, baseCPU, stepCPU) when `gclToCPU` is on.
     pub gcl_to_cpu: Option<(f64, f64, f64)>,
+    pub whitelist: Vec<String>,
 }
 
 static SETTINGS: OnceLock<Settings> = OnceLock::new();
@@ -46,6 +49,7 @@ pub fn parse_settings(text: &str) -> Settings {
     Settings {
         shard_name: j.get("shardName").and_then(Json::as_str).map(str::to_string),
         gcl_to_cpu: j.get("gclToCPU").filter(|g| matches!(g, Json::Obj(_))).map(|g| (num(g, "maxCPU", 300.0), num(g, "baseCPU", 20.0), num(g, "stepCPU", 10.0))),
+        whitelist: j.get("whitelist").and_then(Json::as_array).map(|a| a.iter().filter_map(Json::as_str).map(str::to_string).collect()).unwrap_or_default(),
     }
 }
 
@@ -55,8 +59,10 @@ pub fn register(r: &mut Registry) {
     if let Some(name) = &settings.shard_name {
         r.server_data.push(("shards", Json::Arr(vec![Json::Str(name.clone())])));
     }
+    let mut list = load_whitelist(&r.data_dir);
+    merge_configured(&mut list, &settings.whitelist);
+    *WHITELIST.lock().unwrap_or_else(|e| e.into_inner()) = list;
     let _ = SETTINGS.set(settings);
-    *WHITELIST.lock().unwrap_or_else(|e| e.into_inner()) = load_whitelist(&r.data_dir);
     r.engine.processor.global_stage.push(crons);
     r.cli_js.push(CLI_JS);
     r.cli_calls.push(("ucs.randomToken", random_token));
@@ -151,6 +157,15 @@ fn whitelist_get(_args: &Json, _ctx: &CliCallCtx) -> Result<Json, String> {
 
 fn user_arg(args: &Json) -> Result<String, String> {
     args.at(0).and_then(Json::as_str).map(str::to_lowercase).ok_or_else(|| "username required".to_string())
+}
+
+/// The configured names a list does not hold yet (in any case), added in their own case.
+pub fn merge_configured(list: &mut Vec<String>, configured: &[String]) {
+    for name in configured {
+        if !list.iter().any(|w| w.eq_ignore_ascii_case(name)) {
+            list.push(name.clone());
+        }
+    }
 }
 
 /// admin-utils pushes without a check, so a name can be listed twice; so here.
@@ -265,7 +280,15 @@ mod tests {
     fn settings_from_ucs_json() {
         assert_eq!(parse_settings(""), Settings::default());
         let s = parse_settings(r#"{"shardName":"shard","gclToCPU":{"maxCPU":100,"baseCPU":20,"stepCPU":10}}"#);
-        assert_eq!(s, Settings { shard_name: Some("shard".into()), gcl_to_cpu: Some((100.0, 20.0, 10.0)) });
+        assert_eq!(s, Settings { shard_name: Some("shard".into()), gcl_to_cpu: Some((100.0, 20.0, 10.0)), whitelist: vec![] });
+        assert_eq!(parse_settings(r#"{"whitelist":["Observer","Invader"]}"#).whitelist, vec!["Observer".to_string(), "Invader".into()]);
+    }
+
+    #[test]
+    fn configured_names_join_the_list_once_in_their_case() {
+        let mut list = vec!["w7n3".to_string(), "observer".to_string()];
+        merge_configured(&mut list, &["Observer".into(), "Source Keeper".into()]);
+        assert_eq!(list, vec!["w7n3".to_string(), "observer".into(), "Source Keeper".into()]);
     }
 
     #[test]

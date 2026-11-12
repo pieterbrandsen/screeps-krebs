@@ -46,6 +46,9 @@ pub struct EngineHooks {
     /// screeps-krebs: build chunks as screepsmod-history's worker does (`{}` for a tick the room did not save, as many
     /// ticks as it saved, `"undefined"` keys dropped) instead of vanilla's stop at the first missing tick.
     pub history_fill_gaps: bool,
+    /// screeps-krebs: `config.engine.on('init', type => type === 'main' && …)`: run once when the server starts, on the
+    /// loaded world, before the first tick and before the console or the API can change it.
+    pub init: Vec<fn(&mut World)>,
 }
 
 /// screeps-krebs: the rooms whose history the writer holds and has not uploaded yet, each with the lowest tick it

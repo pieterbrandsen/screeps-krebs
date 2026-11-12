@@ -17,6 +17,8 @@ server got from its mods: a few hooks in the core, and one mod, `ucs`, that uses
 | `ProcessorHooks::actionlog_amounts` | `pickup`, `withdraw`, `drop` and `transferEnergy` record `{x, y, amount, resourceType, targetId}` in actionLog, as the lanes' engine fork does. |
 | Auth | Verifies screepsmod-auth password hashes (PBKDF2-HMAC-SHA256), and accepts long-lived API tokens from `users[].authTokens`. These stay private, as `password` does. `util::sha256` has the hashes. |
 | `world.original` (krebs.json) | An official Loki db.json that `system.resetAllData()` reloads, as vanilla reloads `db.original.json`. `serve` also imports it into a data directory that has no world yet. The lanes use the launcher's seed world (`@screeps/launcher/init_dist/db.json`). |
+| `storage.env.set(GAMETIME, t)` | Sets the world's clock, as vanilla's next tick reads it from env (stage lanes move a paused world to the stage's tick). The virtual wall clock does not jump. |
+| `EngineHooks::init` | Runs once when the server starts, before the first tick: vanilla's `engine.on('init', 'main')`. |
 | `/api/version` | `serverData.shards` comes from the backend config, so a mod can name the shard. |
 
 ## The `ucs` mod
@@ -31,6 +33,8 @@ server got from its mods: a few hooks in the core, and one mod, `ucs`, that uses
 | screepsmod-client-new (v0.2.33-single-shard-room-channel.5): `/client`, plus the lanes' `/broadcast` page | `client.rs` |
 | ucsbot-watch: open rooms and map in memory segment 98 | `watch.rs` |
 | ucsbot-recording-rooms: no room limit on recording lanes | `watch.rs` |
+| @admon-dev/screepsmod-speedrun 1.0.3: bots removed at start | `speedrun.rs` (`"speedrun": true`), with krebs.json `engine.disabledCronjobs` |
+| config.yml `serverConfig.whitelist` | `admin.rs` (`whitelist` in ucs.json) |
 
 Not ported, because no lane tooling reads them:
 
@@ -38,8 +42,10 @@ Not ported, because no lane tooling reads them:
 - milestones-history
 - the rest of admin-utils
 
-The speedrun rules (screepsmod-speedrun, and run.sh's stronghold patch) are world setup, not server code. They are
-covered by `engine.disabledCronjobs` and the lane runner.
+run.sh's stronghold patch (the invaderCore ruins) is world setup the lane runner lays through the console.
+
+Not ported yet: screepsmod-dynamicmarket, which the non-record lanes load. Our bot never uses the market, but the
+opponent bots may; the opponent profiles' calibration decides whether it matters.
 
 ## Settings
 
@@ -64,7 +70,9 @@ covered by `engine.disabledCronjobs` and the lane runner.
   "gclToCPU": {"maxCPU": 300, "baseCPU": 20, "stepCPU": 10},
   "history": {"chunkSize": 100, "keepTicks": 200000},
   "clientDir": "/path/to/screepsmod-client-new/dist/embedded",
-  "recordingRooms": false
+  "recordingRooms": false,
+  "speedrun": false,
+  "whitelist": ["Observer", "Invader", "Source Keeper", "Screeps"]
 }
 ```
 

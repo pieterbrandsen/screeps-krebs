@@ -251,6 +251,9 @@ fn serve(mut cfg: Config, args: &Args) {
     config.history = history;
     w.config = Arc::new(config);
     let hooks: &'static EngineHooks = Box::leak(Box::new(registry.engine));
+    for init in &hooks.init {
+        init(&mut w);
+    }
 
     let rt = Arc::new(runtime::Runtime::new(
         runtime_config(&cfg, w.compat.profile),

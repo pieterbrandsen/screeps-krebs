@@ -9,13 +9,15 @@
 //! * the browser client at `/client` and the `/broadcast` page, in `client`;
 //! * the lanes' local socket mods (open rooms in segment 98, the recording lanes' unlimited room streams), in `watch`.
 //!
-//! The speedrun rules (screepsmod-speedrun 1.0.3 and run.sh's stronghold patch) are world setup, not server code:
-//! `engine.disabledCronjobs` turns off genInvaders, genStrongholds and expandStrongholds, and the lane runner removes
-//! the NPC bots and lays the invaderCore ruins through the console.
+//! * screepsmod-speedrun 1.0.3 (bots removed at start), in `speedrun`; its cronjob half is krebs.json's
+//!   `engine.disabledCronjobs` (genInvaders, genStrongholds, expandStrongholds).
+//!
+//! run.sh's stronghold patch is world setup: the lane runner lays the invaderCore ruins through the console.
 
 pub mod admin;
 pub mod client;
 pub mod history;
+pub mod speedrun;
 pub mod watch;
 
 use backend::http::{Request, Response};
@@ -45,6 +47,7 @@ impl Mod for Ucs {
         history::register(r, &ucs_json);
         client::register(r, &ucs_json);
         watch::register(r, &ucs_json);
+        speedrun::register(r, &ucs_json);
     }
 }
 

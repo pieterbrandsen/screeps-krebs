@@ -293,12 +293,25 @@ fn flags(w: &mut World, ops: Vec<DbOp>) {
 // ---- env (ENV-*) ----
 
 /// What `env.set(key, value)` does to the world. Keys the world models are applied (and persisted with it);
-/// the derived ones (`gameTime`, `accessibleRooms`, `roomStatusData`, `terrainData`, `mapView:*`,
-/// `roomEventLog:`) are refused; any other key is the caller's (kept in memory by the CLI host).
+/// the derived ones (`accessibleRooms`, `roomStatusData`, `terrainData`, `mapView:*`, `roomEventLog:`) are
+/// refused; any other key is the caller's (kept in memory by the CLI host).
+///
+/// screeps-krebs: `gameTime` sets the world's clock, as vanilla's next tick reads it from env (the UCS stage lanes
+/// move a world to its stage's tick this way, paused). The virtual wall clock is re-anchored at the new tick, so it
+/// does not jump: vanilla's `Date.now()` does not move with the game time either.
 pub fn env_set(w: &mut World, name: &str, value: &Val) -> Result<bool, String> {
     let user = |w: &World, prefix: &str| name.strip_prefix(prefix).and_then(Id::new).and_then(|id| w.user_ids.get(&id).copied());
     let text = |v: &Val| crate::live::to_js_string(&crate::live::from_val(v)).to_string();
-    if name == "mainLoopPaused" {
+    if name == "gameTime" {
+        let n = crate::live::to_number(&crate::live::from_val(value));
+        if !(n.is_finite() && n >= 1.0 && n.fract() == 0.0) {
+            return Err(format!("env key gameTime: {n} is not a tick"));
+        }
+        let ms = w.clock.at(w.time);
+        w.clock.base_ms = ms;
+        w.clock.base_tick = n as u64;
+        w.time = n as u64;
+    } else if name == "mainLoopPaused" {
         // `+value`: the main loop reads it as a number
         let paused = crate::live::to_number(&crate::live::from_val(value));
         env_mut(w).paused = paused != 0.0 && !paused.is_nan();
@@ -334,7 +347,7 @@ pub fn env_set(w: &mut World, name: &str, value: &Val) -> Result<bool, String> {
                 }
             }
         }
-    } else if matches!(name, "gameTime" | "accessibleRooms" | "roomStatusData" | "terrainData" | "roomEventLog:") || name.starts_with("mapView:") {
+    } else if matches!(name, "accessibleRooms" | "roomStatusData" | "terrainData" | "roomEventLog:") || name.starts_with("mapView:") {
         return Err(format!("env key {name} is derived from the world in Krebs"));
     } else {
         return Ok(false);
