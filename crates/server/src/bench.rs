@@ -547,6 +547,7 @@ pub fn run(cfg: Config, args: &Args) {
             port: 0,
             cli_host: "127.0.0.1".into(),
             cli_port: 0,
+            cli_http: false,
             max_connections: 64,
             request_timeout_s: 120,
             server_password: None,

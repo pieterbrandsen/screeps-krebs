@@ -136,6 +136,36 @@ fn output_rules() {
     s.close_session(id2);
 }
 
+/// screeps-launcher's HTTP CLI (`cli.http`, screeps-krebs): the whole body one expression, the result awaited and
+/// written once, a falsy value too (a line session prints nothing for it), a string as it is however long (a line
+/// session's util.inspect cuts it at 10,000 characters and quotes it), a throw as `Error: <stack>`.
+#[test]
+fn launcher_output_rules() {
+    let host = Arc::new(Mem::default());
+    let (s, _) = session(host.clone());
+    let eval = |body: &str| {
+        let id = s.open_launcher_session().unwrap();
+        let out = s.eval(id, body);
+        s.close_session(id);
+        out
+    };
+    assert_eq!(eval("1 +\n1"), "2\n");
+    assert_eq!(eval("Promise.resolve(0)"), "0\n");
+    assert_eq!(eval("Promise.resolve(false)"), "false\n");
+    assert_eq!(eval("Promise.resolve('')"), "\n");
+    assert_eq!(eval("undefined"), "undefined\n");
+    let long = eval("Promise.resolve('x'.repeat(20000) + \"'\")");
+    assert_eq!(long.len(), 20_002, "a string comes back whole and unquoted");
+    assert!(long.ends_with("'\n"));
+    assert_eq!(eval("({ a: 1, b: [1, 2] })"), "{ a: 1, b: [ 1, 2 ] }\n");
+    assert!(eval("nope.nope").starts_with("Error: ReferenceError: nope is not defined"));
+    assert!(eval("Promise.reject(new Error('gone'))").starts_with("Error: Error: gone"));
+    assert_eq!(eval("print('hi'); 42"), "'hi'\n42\n");
+    // each request is a fresh realm
+    eval("x = 5");
+    assert_eq!(eval("typeof x"), "undefined\n");
+}
+
 /// tools/oracle/cli-storage.js fixtures replayed in V8.
 #[test]
 fn storage_fixtures() {

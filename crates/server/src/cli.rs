@@ -425,6 +425,15 @@ impl CliEval for Cli {
             Err(e) => Box::new(Session { rt: iso, id: None, error: Some(e) }),
         }
     }
+
+    /// One session per HTTP CLI request (`cli.http`), closed when the request is answered.
+    fn open_launcher(&self) -> Option<Box<dyn CliSession>> {
+        let iso = self.0.clone();
+        Some(match iso.server().open_launcher_session() {
+            Ok(id) => Box::new(Session { rt: iso, id: Some(id), error: None }),
+            Err(e) => Box::new(Session { rt: iso, id: None, error: Some(e) }),
+        })
+    }
 }
 
 /// What stands behind the CLI port with `cli.off`. The console has no password and runs anything, so this runs nothing.

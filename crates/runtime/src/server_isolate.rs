@@ -87,6 +87,16 @@ impl ServerIsolate {
 
     /// One context per CLI connection (CLI-SANDBOX). Err: the bundle failed to start.
     pub fn open_session(&self) -> Result<u64, String> {
+        self.open_session_as(false)
+    }
+
+    /// A context for one screeps-launcher HTTP CLI request (`POST /cli`): `eval` takes the whole body as one
+    /// expression and returns what the launcher writes (js/cli/loader.js `__cliStart`, `natives.launcher`).
+    pub fn open_launcher_session(&self) -> Result<u64, String> {
+        self.open_session_as(true)
+    }
+
+    fn open_session_as(&self, launcher: bool) -> Result<u64, String> {
         let host = self.host.get().cloned().ok_or("the CLI has no host")?;
         let mut state = self.lock();
         if state.is_none() {
@@ -122,6 +132,11 @@ impl ServerIsolate {
             crate::natives::set_fn(tc, natives, "env", env);
             crate::natives::set_fn(tc, natives, "call", call);
             crate::natives::set_fn(tc, natives, "out", out);
+            if launcher {
+                let key = v8::String::new(tc, "launcher").unwrap();
+                let yes = v8::Boolean::new(tc, true);
+                natives.set(tc, key.into(), yes.into());
+            }
             let Some(run) = start.call(tc, global.into(), &[natives.into()]) else { fail!() };
             let run = v8::Local::<v8::Function>::try_from(run).map_err(|_| "__cliStart returned no function")?;
             tc.perform_microtask_checkpoint();

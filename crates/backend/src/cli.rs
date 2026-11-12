@@ -6,11 +6,76 @@
 //! CLI TCP transport on cli_host:cli_port (127.0.0.1:21026): per connection a log line, a session
 //! (`CliEval::open`, CLI-SANDBOX), the greeting, then readline over the socket: each line is evaluated and its
 //! output written (CLI-SERVER, CLI-OUTPUT). No authentication: bind to localhost (ARCHITECTURE.md §8.6).
+//!
+//! `cli.http` (screeps-krebs, not upstream): the port speaks screeps-launcher's HTTP CLI instead, as tools built for
+//! a launcher server expect (`start_http`).
 
+use crate::http::{read_request_with, write_response, ReadError, Response};
 use crate::CliEval;
-use std::io::{Read, Write};
+use std::io::{BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
+
+/// A `POST /cli` body may carry a stage's documents: far more than a game API request.
+const CLI_BODY_LIMIT: usize = 64 * 1024 * 1024;
+
+/// screeps-launcher's HTTP CLI on the console port (its cli.js): `POST /cli` evaluates the whole body as one
+/// expression in a fresh session and answers with what it wrote (`text/plain`, the result once, awaited, a string as it
+/// is and anything else through util.inspect, a throw as `Error: <stack>`, each write ending "\n"); `GET /greeting`
+/// answers the greeting. The console runs anything and has no password, and any web page can make its visitor's
+/// browser send a request here, so a request that carries `Origin` (every browser's cross-site POST does, the tools
+/// this is for never) is refused.
+pub fn start_http(host: &str, port: u16, cli: Arc<dyn CliEval>) {
+    let listener = match TcpListener::bind((host, port)) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("The admin console is off, as port {port} is taken ({e}). The game is not affected.");
+            return;
+        }
+    };
+    println!("CLI (HTTP, screeps-launcher's) listening on {host}:{port}");
+    std::thread::Builder::new()
+        .name("cli-http-accept".into())
+        .spawn(move || {
+            for stream in listener.incoming().flatten() {
+                let cli = cli.clone();
+                let _ = std::thread::Builder::new().name("cli-http".into()).spawn(move || http_connection(stream, &*cli));
+            }
+        })
+        .expect("spawn the HTTP CLI listener");
+}
+
+fn http_connection(socket: TcpStream, cli: &dyn CliEval) {
+    let _ = socket.set_read_timeout(Some(std::time::Duration::from_secs(120)));
+    let Ok(mut writer) = socket.try_clone() else { return };
+    let mut reader = BufReader::new(socket);
+    let req = match read_request_with(&mut reader, &|_| CLI_BODY_LIMIT, &mut || {
+        let _ = writer.write_all(b"HTTP/1.1 100 Continue\r\n\r\n");
+    }) {
+        Ok(r) => r,
+        Err(ReadError::Closed) => return,
+        Err(ReadError::Status(s)) => {
+            let _ = write_response(&mut writer, &Response::text(s, "text/plain; charset=utf-8", ""), false);
+            return;
+        }
+    };
+    let _ = write_response(&mut writer, &http_answer(cli, &req.method, &req.path, req.header("origin").is_some(), &req.body), false);
+}
+
+/// The answer to one HTTP CLI request.
+fn http_answer(cli: &dyn CliEval, method: &str, path: &str, has_origin: bool, body: &[u8]) -> Response {
+    if has_origin {
+        return Response::text(403, "text/plain; charset=utf-8", "The admin console takes no requests from web pages.\n");
+    }
+    match (method, path) {
+        ("GET", "/greeting") => Response::text(200, "text/plain; charset=utf-8", &cli.open().greeting()),
+        ("POST", "/cli") => match cli.open_launcher() {
+            Some(mut session) => Response::text(200, "text/plain; charset=utf-8", &session.eval(&String::from_utf8_lossy(body))),
+            None => Response::text(503, "text/plain; charset=utf-8", "This console has no HTTP mode.\n"),
+        },
+        _ => Response::not_found(method, path),
+    }
+}
 
 /// server.js:48 startServer: listen, one thread per connection. A port that cannot be bound is reported, not
 /// fatal (the game server keeps running without a CLI).
@@ -185,6 +250,61 @@ mod tests {
         for line in ["system.pauseSimulation()", "storage.db.users.find({ username: 'HTTP/1.1' })", "\tmap.generateRoom('W1N1')", "'Jürgen'", ""] {
             assert!(!not_a_command(line), "{line:?}");
         }
+    }
+
+    /// A launcher-mode evaluator that answers with what the body was, so a test sees it reached eval whole.
+    struct Launcher;
+    impl CliEval for Launcher {
+        fn open(&self) -> Box<dyn CliSession> {
+            Echo.open()
+        }
+        fn open_launcher(&self) -> Option<Box<dyn CliSession>> {
+            struct S;
+            impl CliSession for S {
+                fn eval(&mut self, body: &str) -> String {
+                    format!("ran [{body}]\n")
+                }
+            }
+            Some(Box::new(S))
+        }
+    }
+
+    fn http(port: u16, raw: &str) -> String {
+        let mut c = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        c.write_all(raw.as_bytes()).unwrap();
+        c.set_read_timeout(Some(std::time::Duration::from_secs(5))).unwrap();
+        let mut got = Vec::new();
+        let _ = c.read_to_end(&mut got);
+        String::from_utf8_lossy(&got).into_owned()
+    }
+
+    #[test]
+    fn http_cli_evaluates_the_whole_body_as_one_expression() {
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        start_http("127.0.0.1", port, Arc::new(Launcher));
+        let body = "Promise.all([\n  storage.env.get('gameTime'),\n]).then(([t]) => t)";
+        let got = http(port, &format!("POST /cli HTTP/1.1\r\nHost: x\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{body}", body.len()));
+        assert!(got.starts_with("HTTP/1.1 200"), "{got}");
+        assert!(got.ends_with(&format!("ran [{body}]\n")), "{got}");
+        let greeting = http(port, "GET /greeting HTTP/1.1\r\nHost: x\r\n\r\n");
+        assert!(greeting.contains("hello"), "{greeting}");
+    }
+
+    #[test]
+    fn http_cli_refuses_a_web_page() {
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        start_http("127.0.0.1", port, Arc::new(Launcher));
+        let got = http(port, "POST /cli HTTP/1.1\r\nHost: x\r\nOrigin: http://evil.example\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\n1+1");
+        assert!(got.starts_with("HTTP/1.1 403"), "{got}");
+        assert!(!got.contains("ran ["), "{got}");
+    }
+
+    #[test]
+    fn http_cli_without_a_launcher_mode_runs_nothing() {
+        let port = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
+        start_http("127.0.0.1", port, Arc::new(Echo));
+        let got = http(port, "POST /cli HTTP/1.1\r\nHost: x\r\nContent-Length: 3\r\n\r\n1+1");
+        assert!(got.starts_with("HTTP/1.1 503"), "{got}");
     }
 
     #[test]

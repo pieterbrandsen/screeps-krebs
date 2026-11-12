@@ -371,6 +371,7 @@ mod tests {
                 port: 21025,
                 cli_host: "127.0.0.1".into(),
                 cli_port: 21026,
+                cli_http: false,
                 max_connections: 10,
                 request_timeout_s: 120,
                 server_password: password.map(Into::into),

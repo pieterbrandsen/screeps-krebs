@@ -36,6 +36,8 @@ pub struct Config {
     pub cli_port: u16,
     /// No admin console and no port for one. A match's server has no use for one.
     pub cli_off: bool,
+    /// The console port speaks screeps-launcher's HTTP CLI (`cli.http`).
+    pub cli_http: bool,
     /// `single-user:<name>` | `trust` | `off`
     pub steam: String,
     pub data: PathBuf,
@@ -159,6 +161,7 @@ impl Config {
             cli_host: str_("cli.host", "127.0.0.1"),
             cli_port: port("cli.port", 21026)?,
             cli_off: bool_("cli.off", false),
+            cli_http: bool_("cli.http", false),
             steam: str_("auth.steam", "single-user:player"),
             data: PathBuf::from(str_("data", "data")),
             world: WorldCfg {

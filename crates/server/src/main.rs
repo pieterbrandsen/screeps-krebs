@@ -276,6 +276,7 @@ fn serve(mut cfg: Config, args: &Args) {
             cli_host: cfg.cli_host.clone(),
             // port 0 is no console at all
             cli_port: if cfg.cli_off { 0 } else { cfg.cli_port },
+            cli_http: cfg.cli_http,
             max_connections: cfg.max_connections,
             request_timeout_s: cfg.request_timeout_s,
             server_password: cfg.server_password.clone(),

@@ -83,8 +83,31 @@
     G.__cliStart = function (natives) {
         G.__cli = natives;
         var sandbox = load('cli/sandbox.js');
-        var writer = load('cli/server.js').writer(natives.out);
-        var run = sandbox.create(writer);
+        var run;
+        if (natives.launcher) {
+            // screeps-launcher's HTTP CLI (`POST /cli`, its cli.js): the whole body is one expression, its result
+            // awaited and written once, a string as it is and anything else through util.inspect (a falsy value
+            // included), a throw as `Error: <stack>`; each write ends with "\n". The sandbox's globals are set up
+            // as for a line session, with `print` writing through the same callback.
+            var util = load('cli/inspect.js');
+            var cb = function (data) { natives.out(data + '\n'); };
+            sandbox.create(cb);
+            run = function (command) {
+                var result;
+                try {
+                    result = (0, eval)(command);
+                } catch (e) {
+                    cb('Error: ' + ((e && e.stack) || e));
+                    return;
+                }
+                Promise.resolve(result).then(
+                    function (v) { cb(typeof v !== 'string' ? '' + util.inspect(v) : '' + v); },
+                    function (e) { cb('Error: ' + ((e && e.stack) || e)); });
+            };
+        } else {
+            var writer = load('cli/server.js').writer(natives.out);
+            run = sandbox.create(writer);
+        }
         delete G.__cli;
         delete G.__chitinDefine;
         delete G.__cliStart;

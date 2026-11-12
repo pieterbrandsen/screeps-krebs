@@ -174,6 +174,7 @@ mod e2e {
             port: 0,
             cli_host: "127.0.0.1".into(),
             cli_port: 0,
+            cli_http: false,
             max_connections,
             request_timeout_s,
             server_password: password.map(Into::into),

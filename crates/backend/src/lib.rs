@@ -163,6 +163,11 @@ pub struct UserEvent {
 /// Implemented by server over the server isolate.
 pub trait CliEval: Send + Sync {
     fn open(&self) -> Box<dyn CliSession>;
+    /// A session for one screeps-launcher HTTP CLI request (`cli.http`): `eval` takes the whole body and returns
+    /// what the launcher writes. None where the evaluator has no such mode.
+    fn open_launcher(&self) -> Option<Box<dyn CliSession>> {
+        None
+    }
 }
 
 pub trait CliSession: Send {
@@ -181,6 +186,9 @@ pub struct BackendConfig {
     pub cli_host: String,
     /// 21026
     pub cli_port: u16,
+    /// The console port speaks screeps-launcher's HTTP CLI (`POST /cli`, `GET /greeting`) instead of the line
+    /// protocol (`cli.http`, default off).
+    pub cli_http: bool,
     /// 2048
     pub max_connections: usize,
     /// How long a connection may send nothing while a request is due, or is on its way. Also how long one request has to
@@ -297,7 +305,11 @@ fn take_slot(shared: &Arc<Shared>, peer: Option<IpAddr>) -> Option<Slot> {
 /// Binds the HTTP port and starts the accept loop and the broadcaster. Panics if the port cannot be bound.
 pub fn start(deps: BackendDeps) -> Backend {
     if deps.config.cli_port != 0 {
-        cli::start(&deps.config.cli_host, deps.config.cli_port, deps.cli.clone());
+        if deps.config.cli_http {
+            cli::start_http(&deps.config.cli_host, deps.config.cli_port, deps.cli.clone());
+        } else {
+            cli::start(&deps.config.cli_host, deps.config.cli_port, deps.cli.clone());
+        }
     }
     let listener = TcpListener::bind((deps.config.host.as_str(), deps.config.port))
         .unwrap_or_else(|e| panic!("cannot listen on {}:{}: {e}", deps.config.host, deps.config.port));
@@ -875,7 +887,7 @@ mod tests {
 
     fn shared(max_connections: usize) -> Arc<Shared> {
         let (ctx, _tick) = fake::ctx(None);
-        let config = BackendConfig { host: "0.0.0.0".into(), port: 0, cli_host: "127.0.0.1".into(), cli_port: 0, max_connections, request_timeout_s: 120, server_password: None, steam: "off".into() };
+        let config = BackendConfig { host: "0.0.0.0".into(), port: 0, cli_host: "127.0.0.1".into(), cli_port: 0, cli_http: false, max_connections, request_timeout_s: 120, server_password: None, steam: "off".into() };
         Arc::new(Shared { published: ctx.published, commands: ctx.commands, config, routes: vec![], conns: AtomicUsize::new(0), callers: Mutex::default(), large_body: Mutex::default() })
     }
 
