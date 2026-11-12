@@ -221,6 +221,7 @@ impl<S: Stages> TickLoop<S> {
         let aside = Instant::now();
         let again = (self.p3_repeat > 0).then(|| rooms.clone());
         let mut aside = aside.elapsed();
+        #[cfg(windows)]
         crate::sampler::rooms_phase(true);
         let mut results = self.stages.process_rooms(w, &ctx, rooms);
         if let Some(again) = again {
@@ -228,6 +229,7 @@ impl<S: Stages> TickLoop<S> {
             self.repeat_rooms(w, &ctx, &again);
             aside += t.elapsed();
         }
+        #[cfg(windows)]
         crate::sampler::rooms_phase(false);
         self.times.room_ns += results.iter().map(|r| r.cost_ns as u64).sum::<u64>();
         lap(&mut self.times, 4);
