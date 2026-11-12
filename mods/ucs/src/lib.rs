@@ -6,7 +6,8 @@
 //! * `GET /api/game/shards/info`: `{ok, shards: [{cpuLimit, lastTicks, name, rooms, tick}]}`.
 //! * the console helpers, crons and shard name in `admin` (admin-utils' and screepsmod-auth's);
 //! * room history as our screepsmod-history fork keeps and serves it, in `history`;
-//! * the browser client at `/client` and the `/broadcast` page, in `client`.
+//! * the browser client at `/client` and the `/broadcast` page, in `client`;
+//! * the lanes' local socket mods (open rooms in segment 98, the recording lanes' unlimited room streams), in `watch`.
 //!
 //! The speedrun rules (screepsmod-speedrun 1.0.3 and run.sh's stronghold patch) are world setup, not server code:
 //! `engine.disabledCronjobs` turns off genInvaders, genStrongholds and expandStrongholds, and the lane runner removes
@@ -15,6 +16,7 @@
 pub mod admin;
 pub mod client;
 pub mod history;
+pub mod watch;
 
 use backend::http::{Request, Response};
 use backend::mods::{Manifest, Mod, Registry};
@@ -42,6 +44,7 @@ impl Mod for Ucs {
         let ucs_json = Json::parse(&std::fs::read_to_string(r.data_dir.join("ucs.json")).unwrap_or_default()).unwrap_or(Json::Null);
         history::register(r, &ucs_json);
         client::register(r, &ucs_json);
+        watch::register(r, &ucs_json);
     }
 }
 

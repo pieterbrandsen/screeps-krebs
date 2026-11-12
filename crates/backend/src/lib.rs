@@ -209,6 +209,8 @@ pub struct BackendDeps {
     pub routes: Vec<Route>,
     /// Mods' socket channels (`Registry::socket_channels`), in mod load order.
     pub socket_channels: Vec<(&'static str, socket::server::ChannelFn)>,
+    /// Mods' socket event handlers (`Registry::socket_events`), in mod load order.
+    pub socket_events: Vec<socket::server::SocketEventFn>,
     /// Mods' `config.backend` assignments (`Registry::server_data`), in mod load order.
     pub server_data: Vec<(&'static str, Json)>,
 }
@@ -315,7 +317,7 @@ pub fn start(deps: BackendDeps) -> Backend {
         .unwrap_or_else(|e| panic!("cannot listen on {}:{}: {e}", deps.config.host, deps.config.port));
     let addr = listener.local_addr().expect("bound socket has an address");
     let _ = deps.published.steam.set(deps.config.steam.clone());
-    let _ = deps.published.mods.set(server::ModBackend::new(&deps.server_data, deps.socket_channels));
+    let _ = deps.published.mods.set(server::ModBackend::new(&deps.server_data, deps.socket_channels).with_socket_events(deps.socket_events, deps.commands.clone()));
     let shared = Arc::new(Shared { published: deps.published, commands: deps.commands, config: deps.config, routes: deps.routes, conns: AtomicUsize::new(0), callers: Mutex::default(), large_body: Mutex::default() });
     let ticks = Arc::new(broadcast::TickSlot::default());
     let published = shared.published.clone();

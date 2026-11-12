@@ -131,6 +131,9 @@ pub struct ModBackend {
     /// `config.backend.socketUpdateThrottle` (the broadcaster's `_.throttle` wait).
     pub(crate) throttle: std::time::Duration,
     pub(crate) channels: Vec<(&'static str, crate::socket::server::ChannelFn)>,
+    /// The mods' socket event handlers (`Registry::socket_events`) and the command channel they write through.
+    pub(crate) socket_events: Vec<crate::socket::server::SocketEventFn>,
+    pub(crate) commands: Option<std::sync::mpsc::Sender<engine::world::Command>>,
 }
 
 impl ModBackend {
@@ -160,7 +163,16 @@ impl ModBackend {
             server_data: server_data(&backend),
             throttle: std::time::Duration::from_secs_f64(wait.min(1e9) / 1000.0),
             channels,
+            socket_events: Vec::new(),
+            commands: None,
         }
+    }
+
+    /// The mods' socket event handlers, and the command channel they change the world through.
+    pub fn with_socket_events(mut self, events: Vec<crate::socket::server::SocketEventFn>, commands: std::sync::mpsc::Sender<engine::world::Command>) -> ModBackend {
+        self.socket_events = events;
+        self.commands = Some(commands);
+        self
     }
 }
 

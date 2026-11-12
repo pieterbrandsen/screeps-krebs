@@ -555,6 +555,7 @@ pub fn run(cfg: Config, args: &Args) {
         },
         routes: registry.routes,
         socket_channels: registry.socket_channels,
+        socket_events: registry.socket_events,
         server_data: registry.server_data,
     });
     let hooks: &'static engine::hooks::EngineHooks = Box::leak(Box::new(registry.engine));

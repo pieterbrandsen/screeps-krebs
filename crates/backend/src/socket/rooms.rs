@@ -18,6 +18,18 @@ use util::json::Json;
 /// rooms.js `USER_LIMIT`.
 pub const USER_LIMIT: u32 = 2;
 
+/// How many rooms one account may watch at once (screeps-krebs): `USER_LIMIT` unless a mod set another
+/// (`set_user_limit`), as the UCS recording lanes lift it to watch every room of a run.
+static LIMIT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(USER_LIMIT);
+
+pub fn set_user_limit(limit: u32) {
+    LIMIT.store(limit, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn user_limit() -> u32 {
+    LIMIT.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// rooms.js `roomBuiltinUsers`.
 const BUILTIN: [(&str, &str); 2] = [("2", "Invader"), ("3", "Source Keeper")];
 
@@ -240,7 +252,7 @@ pub(crate) fn subscribe(p: &Published, conn: &Arc<Conn>, u: UserIdx, name: &str)
     let mut hub = p.hub().lock();
     // a repeat starts over from a new snapshot; a second entry would only send every tick twice
     hub.rooms.entry(name.to_string()).or_default().retain(|s| s.conn != conn.id);
-    if hub_limit(&hub, u) > USER_LIMIT {
+    if hub_limit(&hub, u) > user_limit() {
         let subs = hub.rooms.entry(name.to_string()).or_default();
         subs.push(RoomSub { conn: conn.id, user: u, objects: Arc::from(Vec::new()), users: BUILTIN.iter().map(|(i, _)| (*i).into()).collect() });
         conn.write_event(&format!("err@room:{name}"), "\"subscribe limit reached\"");
@@ -283,7 +295,7 @@ pub(crate) fn broadcast(hub: &mut HubState, view: &WorldView, rng: &mut util::rn
         for s in &subs {
             let n = hub.users_limit.entry(s.user).or_insert(0);
             *n += 1;
-            let ok = *n <= USER_LIMIT;
+            let ok = *n <= user_limit();
             if !ok {
                 if let Some(c) = hub.conns.get(&s.conn) {
                     c.write_event(&format!("err@room:{name}"), "\"subscribe limit reached\"");

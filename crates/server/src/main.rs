@@ -287,6 +287,7 @@ fn serve(mut cfg: Config, args: &Args) {
         },
         routes: registry.routes,
         socket_channels: registry.socket_channels,
+        socket_events: registry.socket_events,
         server_data: registry.server_data,
     });
     let port = backend.local_addr().port();

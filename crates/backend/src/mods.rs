@@ -1,7 +1,8 @@
 //! Everything a mod can register (ARCHITECTURE.md §10.1, FROZEN). Owner: WP21.
-//! screeps-krebs adds `cli_js` and `cli_calls`: console helpers, as vanilla mods add to `config.cli`.
+//! screeps-krebs adds `cli_js` and `cli_calls`: console helpers, as vanilla mods add to `config.cli`; and
+//! `socket_events`: what each socket connection subscribes to, unsubscribes from, and when it closes.
 
-use crate::socket::server::ChannelFn;
+use crate::socket::server::{ChannelFn, SocketEventFn};
 use crate::Route;
 
 pub struct Manifest {
@@ -38,6 +39,10 @@ pub struct Registry {
     /// (channel prefix, handler): offered every `subscribe` whose channel starts with the prefix, then called for
     /// each subscriber after every tick (`ChannelFn`).
     pub socket_channels: Vec<(&'static str, ChannelFn)>,
+    /// Socket event handlers (screeps-krebs): each `subscribe`, `unsubscribe` and closed connection, after the built-in
+    /// channels and `socket_channels` handled it, as a vanilla socket module's `onSubscribe`, `onUnsubscribe` and
+    /// `conn.on('close')` see them.
+    pub socket_events: Vec<SocketEventFn>,
     /// Game-slot JS (§10.2), one `mods/<mod>.js` module each, evaluated in every player VM after the game API; its
     /// exports may carry `customObjectPrototypes` and `customIntentTypes`.
     pub js_game: Vec<&'static str>,

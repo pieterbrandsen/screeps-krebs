@@ -1,5 +1,7 @@
 # Krebs
 
+> **screeps-krebs:** this fork adds what the UCS bot's perf lanes need. See [SCREEPS-KREBS.md](SCREEPS-KREBS.md).
+
 Krebs is a private server for the game Screeps, written in Rust. It runs on your own PC and adds lobbies and a Battle
 Royale mode.
 

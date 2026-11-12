@@ -200,7 +200,7 @@ pub(crate) fn upgrade(p: &Arc<Published>, req: &Request, mut stream: Socket, rea
     sock::hello(&conn);
     // the subscriptions go even if a handler panics (and the writer thread ends with the closed outbox)
     let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| read_loop(p, &conn, reader, framed)));
-    p.hub().remove_conn(conn.id);
+    sock::close(p, &conn);
     Ok(())
 }
 

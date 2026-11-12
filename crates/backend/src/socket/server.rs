@@ -21,6 +21,47 @@ use util::json::Json;
 /// subscription / sends nothing this tick; `Some(msg)` is pushed as `[channel, msg]`.
 pub type ChannelFn = fn(Option<UserIdx>, &str, &WorldView) -> Option<Json>;
 
+/// What a connection did (screeps-krebs): a vanilla socket module sees each `subscribe` in its `onSubscribe`, each
+/// `unsubscribe` in its `onUnsubscribe`, and the end of the connection through `conn.on('close')`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SocketEvent<'a> {
+    Subscribe(&'a str),
+    Unsubscribe(&'a str),
+    Close,
+}
+
+/// What a socket event handler gets besides the event: the connection's id, its user (None = unauthenticated), the
+/// world, and the command channel through which a handler changes the world (`crate::call`, or a `Command` sent
+/// without waiting).
+pub struct SocketEventCtx<'a> {
+    pub conn: u64,
+    pub user: Option<UserIdx>,
+    pub view: &'a WorldView,
+    pub commands: Option<&'a std::sync::mpsc::Sender<engine::world::Command>>,
+}
+
+/// A mod's socket event handler (`Registry::socket_events`), called after the built-ins handled the message.
+pub type SocketEventFn = fn(SocketEvent<'_>, &SocketEventCtx<'_>);
+
+/// Every mod's socket event handler, in mod load order.
+pub(crate) fn socket_event(p: &Published, conn: &Conn, event: SocketEvent<'_>) {
+    let mods = p.mods();
+    if mods.socket_events.is_empty() {
+        return;
+    }
+    let view = p.get();
+    let ctx = SocketEventCtx { conn: conn.id, user: conn.user(), view: &view, commands: mods.commands.as_ref() };
+    for f in &mods.socket_events {
+        f(event, &ctx);
+    }
+}
+
+/// `conn.on('close')`: the hub forgets the connection, then the mods hear of it.
+pub(crate) fn close(p: &Published, conn: &Conn) {
+    p.hub().remove_conn(conn.id);
+    socket_event(p, conn, SocketEvent::Close);
+}
+
 /// Built-in channels by name prefix; mods add theirs (`Registry::socket_channels`, `Published::mods`).
 pub const CHANNELS: &[(&str, ChannelFn)] = &[
     ("room:", rooms::room),
@@ -347,6 +388,7 @@ fn own_user(view: &WorldView, user: Option<UserIdx>, id: &str) -> Option<UserIdx
 fn subscribe(p: &Published, conn: &Arc<Conn>, channel: &str) {
     builtin_subscribe(p, conn, channel);
     mod_subscribe(p, conn, channel);
+    socket_event(p, conn, SocketEvent::Subscribe(channel));
 }
 
 /// A mod's channel (`ChannelFn`) whose prefix starts `channel`: `Some(data)` registers the connection (as a truthy
@@ -506,6 +548,8 @@ fn unsubscribe(p: &Published, conn: &Arc<Conn>, channel: &str) {
         }
     }
     hub.unregister(channel, conn.id);
+    drop(hub);
+    socket_event(p, conn, SocketEvent::Unsubscribe(channel));
 }
 
 #[cfg(test)]
@@ -614,6 +658,31 @@ mod tests {
 
     fn watches(p: &crate::Published) -> usize {
         p.hub().lock().memory.values().map(Vec::len).sum()
+    }
+
+    static EVENTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+
+    fn record(event: SocketEvent<'_>, ctx: &SocketEventCtx<'_>) {
+        let user = ctx.user.map(|u| ctx.view.users[u as usize].id.as_str().to_string());
+        EVENTS.lock().unwrap().push(format!("{} {event:?} {user:?} {}", ctx.conn, ctx.commands.is_some()));
+    }
+
+    #[test]
+    fn mods_hear_subscribe_unsubscribe_and_close() {
+        let p = crate::Published::new(crate::fake::view(&crate::fake::world()));
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let _ = p.mods.set(crate::server::ModBackend::new(&[], Vec::new()).with_socket_events(vec![record], tx));
+        let c = signed_in(&p);
+        on_message(&p, &c, "subscribe room:W7N3");
+        on_message(&p, &c, "unsubscribe room:W7N3");
+        close(&p, &c);
+        let id = c.id;
+        assert_eq!(*EVENTS.lock().unwrap(), vec![
+            format!("{id} Subscribe(\"room:W7N3\") Some(\"{ALICE}\") true"),
+            format!("{id} Unsubscribe(\"room:W7N3\") Some(\"{ALICE}\") true"),
+            format!("{id} Close Some(\"{ALICE}\") true"),
+        ]);
+        assert!(c.out.is_closed(), "the hub let the connection go first");
     }
 
     #[test]
