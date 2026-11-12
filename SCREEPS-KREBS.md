@@ -10,6 +10,7 @@ server got from its mods: a few hooks in the core, and one mod, `ucs`, that uses
 | --- | --- |
 | `cli.http` (krebs.json) | The console port speaks screeps-launcher's HTTP CLI. `POST /cli` evaluates the whole body in a fresh session, waits for the result and writes it once (falsy values and long strings included). `GET /greeting` answers too. It is off by default, and a request with an `Origin` header is refused. |
 | Console isolate | Made from the players' startup snapshot. On a stock V8 (every Linux build), the old order aborted the server the first time a player VM was created after the console. |
+| `cli.container` (krebs.json) | The console may listen on every interface of a container whose host publishes its port on the host's loopback only. Without it, Krebs refuses any console host but this PC. |
 | `Registry::cli_js`, `cli_calls` | Console helpers for mods, the way vanilla mods add to `config.cli`. |
 | `Registry::socket_events` | A mod hears each `subscribe`, `unsubscribe` and closed connection, with the connection id, its user, the world and the command channel. These are vanilla's `onSubscribe`, `onUnsubscribe` and `conn.on('close')`. |
 | `socket::rooms::set_user_limit` | A mod can change the 2-room limit per account. |

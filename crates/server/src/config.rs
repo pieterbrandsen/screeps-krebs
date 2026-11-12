@@ -38,6 +38,9 @@ pub struct Config {
     pub cli_off: bool,
     /// The console port speaks screeps-launcher's HTTP CLI (`cli.http`).
     pub cli_http: bool,
+    /// `cli.container` (screeps-krebs): the server runs in a container whose console port the host publishes on its own
+    /// loopback only, so the console may listen on the container's every interface (`cli.host` 0.0.0.0).
+    pub cli_container: bool,
     /// `single-user:<name>` | `trust` | `off`
     pub steam: String,
     pub data: PathBuf,
@@ -165,6 +168,7 @@ impl Config {
             cli_port: port("cli.port", 21026)?,
             cli_off: bool_("cli.off", false),
             cli_http: bool_("cli.http", false),
+            cli_container: bool_("cli.container", false),
             steam: str_("auth.steam", "single-user:player"),
             data: PathBuf::from(str_("data", "data")),
             world: WorldCfg {

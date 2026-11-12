@@ -140,9 +140,10 @@ fn open_to_friends(cfg: &mut Config) {
 }
 
 /// Why the CLI cannot open where the config says, if so. It has no password, and only `--friends` ever moved it itself.
+/// screeps-krebs: `cli.container` says a container's host keeps the console on its own loopback, so any host goes.
 pub fn cli_problem(cfg: &Config) -> Option<String> {
     let this_pc = cfg.cli_host.parse::<IpAddr>().map_or(cfg.cli_host.eq_ignore_ascii_case("localhost"), |ip| ip.is_loopback());
-    (!this_pc).then(|| OPEN_CONSOLE.to_string())
+    (!this_pc && !cfg.cli_container).then(|| OPEN_CONSOLE.to_string())
 }
 
 fn others_can_reach(cfg: &Config) -> bool {
@@ -575,6 +576,10 @@ mod tests {
         }
         open_to_friends(&mut cfg);
         assert_eq!(cli_problem(&cfg), None, "--friends puts it back itself");
+        let mut boxed = config();
+        boxed.cli_host = "0.0.0.0".into();
+        boxed.cli_container = true;
+        assert_eq!(cli_problem(&boxed), None, "cli.container: the host publishes it on its loopback");
     }
 
     #[test]
